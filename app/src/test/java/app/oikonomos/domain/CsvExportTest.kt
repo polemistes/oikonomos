@@ -32,8 +32,8 @@ class CsvExportTest {
     fun writesOneLinePerVoucherWithoutVatColumnsWhenNotRegistered() {
         val csv = CsvExport.vouchers(listOf(row("2026-0001", VoucherType.EXPENSE, 123450)), vatRegistered = false)
         assertEquals(
-            "Bilagsnr;Dato;Type;Motpart;Beskrivelse;Kategori;Konto;Beløp;Prosjekt;Reise;Vedlegg;Status\r\n" +
-                "2026-0001;2026-03-04;Utgift;Butikk;;Materialer og varekjøp;4000;1234,50;;;2026-0001-1.jpg;\r\n",
+            "Bilagsnr;Dato;Type;Motpart;Org.nr;Beskrivelse;Kategori;Konto;Beløp;Prosjekt;Reise;Vedlegg;Status\r\n" +
+                "2026-0001;2026-03-04;Utgift;Butikk;;;Materialer og varekjøp;4000;1234,50;;;2026-0001-1.jpg;\r\n",
             csv,
         )
     }
@@ -42,8 +42,33 @@ class CsvExportTest {
     fun includesVatColumnsWhenRegistered() {
         val csv = CsvExport.vouchers(listOf(row("2026-0001", VoucherType.EXPENSE, 10000)), vatRegistered = true)
         val lines = csv.trim().split("\r\n")
-        assertEquals("Bilagsnr;Dato;Type;Motpart;Beskrivelse;Kategori;Konto;Beløp;MVA-sats;MVA;Prosjekt;Reise;Vedlegg;Status", lines[0])
-        assertEquals("2026-0001;2026-03-04;Utgift;Butikk;;Materialer og varekjøp;4000;100,00;25;20,00;;;2026-0001-1.jpg;", lines[1])
+        assertEquals("Bilagsnr;Dato;Type;Motpart;Org.nr;Beskrivelse;Kategori;Konto;Beløp;MVA-sats;MVA;Prosjekt;Reise;Vedlegg;Status", lines[0])
+        assertEquals("2026-0001;2026-03-04;Utgift;Butikk;;;Materialer og varekjøp;4000;100,00;25;20,00;;;2026-0001-1.jpg;", lines[1])
+    }
+
+    @Test
+    fun listsOrgNumberAndAddsCurrencyColumnsWhenAVoucherIsInForeignCurrency() {
+        val rows = listOf(
+            row("2026-0001", VoucherType.EXPENSE, 10000).copy(orgNumber = "974760673"),
+            // 27,50 euro etter Norges Banks kurs, og 3 480 yen der brukeren skrev inn det banken trakk.
+            row("2026-0002", VoucherType.EXPENSE, 29066)
+                .copy(currency = "EUR", foreignAmount = 2750, exchangeRateSource = "Norges Bank 13.11.2026"),
+            row("2026-0003", VoucherType.EXPENSE, 21200).copy(currency = "JPY", foreignAmount = 348000),
+        )
+        val lines = CsvExport.vouchers(rows, vatRegistered = false).trim().split("\r\n")
+        assertEquals(
+            "Bilagsnr;Dato;Type;Motpart;Org.nr;Beskrivelse;Kategori;Konto;Beløp;Valuta;Beløp i valuta;Kurs;Kurskilde;Prosjekt;Reise;Vedlegg;Status",
+            lines[0],
+        )
+        assertEquals("2026-0001;2026-03-04;Utgift;Butikk;974760673;;Materialer og varekjøp;4000;100,00;;;;;;;2026-0001-1.jpg;", lines[1])
+        assertEquals(
+            "2026-0002;2026-03-04;Utgift;Butikk;;;Materialer og varekjøp;4000;290,66;EUR;27,50;10,569455;Norges Bank 13.11.2026;;;2026-0002-1.jpg;",
+            lines[2],
+        )
+        assertEquals(
+            "2026-0003;2026-03-04;Utgift;Butikk;;;Materialer og varekjøp;4000;212,00;JPY;3480,00;0,060920;Skrevet inn;;;2026-0003-1.jpg;",
+            lines[3],
+        )
     }
 
     @Test

@@ -20,6 +20,11 @@ data class VoucherDraft(
     val attachments: List<StoredFile>,
     val tripId: Long? = null,
     val projectId: Long? = null,
+    val counterpartyOrgNumber: String = "",
+    /** ISO-kode for et bilag i fremmed valuta, tom for kroner. Da er [foreignAmount] beløpet i valutaen, i hundredeler. */
+    val currency: String = "",
+    val foreignAmount: Long = 0,
+    val exchangeRateSource: String = "",
 )
 
 /** Et bilag i regnskapet hører til året det er ført i, og kan ikke flyttes til et annet år. */
@@ -66,6 +71,10 @@ class VoucherRepository(private val db: AppDatabase, private val store: Attachme
                 createdAt = old?.createdAt ?: System.currentTimeMillis(),
                 tripId = draft.tripId,
                 projectId = draft.projectId,
+                counterpartyOrgNumber = draft.counterpartyOrgNumber,
+                currency = draft.currency,
+                foreignAmount = if (draft.currency.isEmpty()) 0 else draft.foreignAmount,
+                exchangeRateSource = if (draft.currency.isEmpty()) "" else draft.exchangeRateSource,
             )
             val id = if (old == null) {
                 dao.insert(voucher)
@@ -108,6 +117,22 @@ class VoucherRepository(private val db: AppDatabase, private val store: Attachme
             check(VoucherRules.permissions(voucher).cancel) { "Bilaget kan ikke annulleres" }
             dao.cancel(id, System.currentTimeMillis(), reason.trim())
         }
+    }
+
+    suspend fun recentCurrencies(): List<String> = dao.recentCurrencies(RECENT_CURRENCIES)
+
+    /** Det høyeste bilagsnummeret i året, til reglene for hva som kan gjøres med et bilag. */
+    suspend fun lastNumber(year: Int): Int? = dao.lastNumber(year)
+
+    /**
+     * Angrer føringen av årets siste bilag, så det blir en uavklart kvittering igjen. Nummeret blir
+     * ledig for neste bilag. Gir false når bilaget ikke lenger er det siste.
+     */
+    suspend fun unbook(id: Long): Boolean = db.withTransaction {
+        val voucher = dao.get(id)?.voucher ?: return@withTransaction false
+        val allowed = VoucherRules.permissions(voucher, dao.lastNumber(voucher.year)).unbook
+        if (allowed) dao.clearNumber(id)
+        allowed
     }
 
     /** Sletter en uavklart kvittering og vedleggene dens. */
@@ -195,5 +220,9 @@ class VoucherRepository(private val db: AppDatabase, private val store: Attachme
 
     suspend fun cleanUpOrphanFiles() {
         store.deleteOrphans(dao.allAttachmentFileNames().toSet())
+    }
+
+    private companion object {
+        const val RECENT_CURRENCIES = 4
     }
 }

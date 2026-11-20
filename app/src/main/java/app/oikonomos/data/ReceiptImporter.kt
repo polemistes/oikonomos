@@ -1,6 +1,7 @@
 package app.oikonomos.data
 
 import android.net.Uri
+import app.oikonomos.domain.ExchangeRates
 import app.oikonomos.domain.ReceiptParser
 import app.oikonomos.ocr.TextReader
 import kotlinx.coroutines.CoroutineScope
@@ -10,6 +11,7 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import java.time.LocalDate
 
@@ -26,6 +28,8 @@ class ReceiptImporter(
     private val store: AttachmentStore,
     private val textReader: TextReader,
     private val repository: VoucherRepository,
+    private val settings: SettingsStore,
+    private val online: OnlineLookups,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val current = MutableStateFlow<ImportProgress?>(null)
@@ -56,19 +60,36 @@ class ReceiptImporter(
     private suspend fun import(uri: Uri): Boolean {
         val file = store.import(uri) ?: return false
         return try {
-            val suggestion = textReader.read(store.file(file.fileName), file.mimeType)?.let { ReceiptParser.parse(it, LocalDate.now()) }
+            val ownOrgNumber = settings.settings.first().orgNumber
+            val suggestion = textReader.read(store.file(file.fileName), file.mimeType)
+                ?.let { ReceiptParser.parse(it, LocalDate.now(), ownOrgNumber) }
+            val date = suggestion?.date ?: LocalDate.now()
+            val amount = suggestion?.amountOre ?: 0
+            // Et beløp i fremmed valuta regnes om når kursen kan hentes. Ellers venter kronebeløpet til bilaget åpnes.
+            val currency = suggestion?.currency.orEmpty()
+            val rate = if (currency.isNotEmpty() && amount > 0) online.rate(currency, date) else null
+            // Navnet i Enhetsregisteret er sikrere enn det som er lest av toppen på kvitteringen.
+            val registered = suggestion?.orgNumber?.let { online.company(it) as? CompanyResult.Found }?.company
             repository.save(
                 VoucherDraft(
                     id = 0,
                     type = VoucherType.EXPENSE,
-                    date = suggestion?.date ?: LocalDate.now(),
-                    amountOre = suggestion?.amountOre ?: 0,
+                    date = date,
+                    amountOre = when {
+                        currency.isEmpty() -> amount
+                        rate != null -> ExchangeRates.toOre(amount, rate.nokPerUnit)
+                        else -> 0
+                    },
                     vatRate = 0,
                     vatOre = 0,
-                    counterparty = suggestion?.vendor.orEmpty(),
+                    counterparty = registered?.name ?: suggestion?.vendor.orEmpty(),
                     description = "",
                     categoryId = null,
                     attachments = listOf(file),
+                    counterpartyOrgNumber = suggestion?.orgNumber.orEmpty(),
+                    currency = currency,
+                    foreignAmount = if (currency.isEmpty()) 0 else amount,
+                    exchangeRateSource = rate?.let { ExchangeRates.sourceLabel(it) }.orEmpty(),
                 ),
                 book = false,
             )

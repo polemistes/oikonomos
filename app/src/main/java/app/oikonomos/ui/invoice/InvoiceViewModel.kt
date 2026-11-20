@@ -9,7 +9,9 @@ import androidx.lifecycle.viewModelScope
 import app.oikonomos.AppContainer
 import app.oikonomos.R
 import app.oikonomos.data.AppSettings
+import app.oikonomos.data.CompanyResult
 import app.oikonomos.data.Customer
+import app.oikonomos.domain.Company
 import app.oikonomos.data.Invoice
 import app.oikonomos.data.InvoiceLine
 import app.oikonomos.data.IssueException
@@ -115,6 +117,9 @@ class InvoiceViewModel(private var invoiceId: Long, private val container: AppCo
     }
 
     /** Lagrer en ny kunde fra fakturaskjemaet og velger den. */
+    /** Foretaket et organisasjonsnummer er registrert på i Enhetsregisteret, eller null når det ikke ble funnet. */
+    suspend fun lookUpCompany(orgNumber: String): Company? = (container.online.company(orgNumber) as? CompanyResult.Found)?.company
+
     fun addCustomer(customer: Customer) {
         viewModelScope.launch {
             val id = repository.saveCustomer(customer)

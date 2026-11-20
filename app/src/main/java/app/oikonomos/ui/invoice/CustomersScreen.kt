@@ -48,9 +48,13 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
 import app.oikonomos.R
 import app.oikonomos.data.Customer
+import app.oikonomos.data.CompanyResult
 import app.oikonomos.data.CustomerType
 import app.oikonomos.data.InvoiceRepository
+import app.oikonomos.data.OnlineLookups
+import app.oikonomos.domain.Company
 import app.oikonomos.domain.Formats
+import app.oikonomos.domain.OrgNumber
 import app.oikonomos.ui.FormDialog
 import app.oikonomos.ui.UiMessage
 import kotlinx.coroutines.channels.Channel
@@ -60,7 +64,10 @@ import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
-class CustomersViewModel(private val repository: InvoiceRepository) : ViewModel() {
+class CustomersViewModel(private val repository: InvoiceRepository, private val online: OnlineLookups) : ViewModel() {
+    /** Foretaket et organisasjonsnummer er registrert på, eller null når det ikke ble funnet. */
+    suspend fun lookUp(orgNumber: String): Company? = (online.company(orgNumber) as? CompanyResult.Found)?.company
+
     val customers: StateFlow<List<Customer>> = repository.observeCustomers()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
@@ -149,16 +156,40 @@ fun CustomersScreen(viewModel: CustomersViewModel, onBack: () -> Unit) {
                 editing = null
                 viewModel.delete(customer)
             },
+            lookUp = viewModel::lookUp,
         )
     }
 }
 
 /** Skjema for en kunde. [onDelete] er null der sletting ikke tilbys. */
 @Composable
-fun CustomerDialog(customer: Customer, onDismiss: () -> Unit, onSave: (Customer) -> Unit, onDelete: (() -> Unit)?) {
+fun CustomerDialog(
+    customer: Customer,
+    onDismiss: () -> Unit,
+    onSave: (Customer) -> Unit,
+    onDelete: (() -> Unit)?,
+    /** Slår opp et organisasjonsnummer i Enhetsregisteret. */
+    lookUp: suspend (String) -> Company?,
+) {
     val isNew = customer.id == 0L
     var draft by remember { mutableStateOf(customer) }
     val words = KeyboardOptions(capitalization = KeyboardCapitalization.Words)
+    // Når nummeret er fullstendig, hentes navn og adresse. Bare tomme felt fylles ut, så det brukeren
+    // har skrevet, aldri overskrives.
+    var registeredName by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(draft.orgNumber) {
+        registeredName = null
+        if (!OrgNumber.isValid(draft.orgNumber)) return@LaunchedEffect
+        val company = lookUp(draft.orgNumber) ?: return@LaunchedEffect
+        registeredName = company.name
+        val noAddress = draft.address.isBlank() && draft.postalCode.isBlank() && draft.city.isBlank()
+        draft = draft.copy(
+            name = draft.name.ifBlank { company.name },
+            address = if (noAddress) company.address else draft.address,
+            postalCode = if (noAddress) company.postalCode else draft.postalCode,
+            city = if (noAddress) company.city else draft.city,
+        )
+    }
 
     FormDialog(
         title = stringResource(if (isNew) R.string.customer_new else R.string.customer_edit),
@@ -201,6 +232,11 @@ fun CustomerDialog(customer: Customer, onDismiss: () -> Unit, onSave: (Customer)
                 value = draft.orgNumber,
                 onValueChange = { text -> draft = draft.copy(orgNumber = text.filter(Char::isDigit).take(9)) },
                 label = { Text(stringResource(R.string.org_number)) },
+                supportingText = when {
+                    registeredName != null -> ({ Text(stringResource(R.string.org_number_registered, registeredName.orEmpty())) })
+                    draft.orgNumber.length == 9 && !OrgNumber.isValid(draft.orgNumber) -> ({ Text(stringResource(R.string.org_number_invalid)) })
+                    else -> null
+                },
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                 modifier = Modifier.fillMaxWidth(),

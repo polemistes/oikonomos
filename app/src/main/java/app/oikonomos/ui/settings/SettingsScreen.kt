@@ -49,6 +49,8 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.oikonomos.R
+import app.oikonomos.ocr.ReceiptLanguage
+import app.oikonomos.ui.LanguagePickerDialog
 import kotlinx.coroutines.launch
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -70,6 +72,7 @@ fun SettingsScreen(viewModel: SettingsViewModel, onBack: () -> Unit, onCategorie
     var restoreFrom by rememberSaveable { mutableStateOf<Uri?>(null) }
     var restoreSnapshot by remember { mutableStateOf<Pair<Uri, LocalDateTime>?>(null) }
     var autoBackupMenu by rememberSaveable { mutableStateOf(false) }
+    var pickLanguage by rememberSaveable { mutableStateOf(false) }
     val backup by viewModel.backupState.collectAsStateWithLifecycle()
 
     LaunchedEffect(viewModel) {
@@ -237,6 +240,26 @@ fun SettingsScreen(viewModel: SettingsViewModel, onBack: () -> Unit, onCategorie
                 }
             }
 
+            SectionTitle(R.string.settings_ocr)
+            val language = ReceiptLanguage.byId(settings.receiptLanguage)
+            SettingsRow(R.string.receipt_language, stringResource(R.string.receipt_language_hint, stringResource(language.label))) {
+                pickLanguage = true
+            }
+            ListItem(
+                modifier = Modifier.clickable { viewModel.change { it.copy(useTesseract = !it.useTesseract) } },
+                headlineContent = { Text(stringResource(R.string.use_tesseract)) },
+                supportingContent = { Text(stringResource(R.string.use_tesseract_hint)) },
+                trailingContent = { Switch(checked = settings.useTesseract, onCheckedChange = null) },
+            )
+
+            SectionTitle(R.string.settings_online)
+            ListItem(
+                modifier = Modifier.clickable { viewModel.change { it.copy(onlineLookups = !it.onlineLookups) } },
+                headlineContent = { Text(stringResource(R.string.online_lookups)) },
+                supportingContent = { Text(stringResource(R.string.online_lookups_hint)) },
+                trailingContent = { Switch(checked = settings.onlineLookups, onCheckedChange = null) },
+            )
+
             SectionTitle(R.string.settings_backup)
             Text(
                 stringResource(R.string.backup_note),
@@ -280,7 +303,30 @@ fun SettingsScreen(viewModel: SettingsViewModel, onBack: () -> Unit, onCategorie
             SettingsRow(R.string.backup_restore_folder, stringResource(R.string.backup_restore_folder_hint), enabled = !state.busy) {
                 restoreFolder.launch(null)
             }
+
+            // Lisensen for ikonet krever at opphavet oppgis der appen brukes, ikke bare i kildekoden.
+            SectionTitle(R.string.settings_about)
+            ListItem(
+                headlineContent = { Text(stringResource(R.string.about_licence)) },
+                supportingContent = { Text(stringResource(R.string.about_licence_text)) },
+            )
+            ListItem(
+                headlineContent = { Text(stringResource(R.string.about_icon)) },
+                supportingContent = { Text(stringResource(R.string.about_icon_text)) },
+            )
         }
+    }
+
+    if (pickLanguage) {
+        LanguagePickerDialog(
+            models = viewModel.languageModels,
+            selected = ReceiptLanguage.byId(state.settings.receiptLanguage),
+            onSelect = { language ->
+                pickLanguage = false
+                viewModel.change { it.copy(receiptLanguage = language.id) }
+            },
+            onDismiss = { pickLanguage = false },
+        )
     }
 
     if (autoBackupMenu) {

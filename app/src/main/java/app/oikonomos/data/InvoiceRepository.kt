@@ -110,6 +110,7 @@ class InvoiceRepository(
                         vatRate = totals.uniformVatRate,
                         vatOre = totals.vatOre,
                         counterparty = draft.customer.name,
+                        counterpartyOrgNumber = draft.customer.orgNumber,
                         description = (if (issued.isCreditNote) "Kreditnota " else "Faktura ") + number,
                         categoryId = defaultIncomeCategory(),
                         createdAt = System.currentTimeMillis(),

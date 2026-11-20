@@ -33,6 +33,7 @@ data class SettingsUiState(
 
 class SettingsViewModel(private val container: AppContainer) : ViewModel() {
     private val store = container.settings
+    val languageModels = container.languageModels
 
     var state by mutableStateOf(SettingsUiState())
         private set

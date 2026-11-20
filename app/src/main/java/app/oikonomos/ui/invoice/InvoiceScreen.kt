@@ -305,6 +305,7 @@ private fun DraftEditor(
                 viewModel.addCustomer(it)
             },
             onDelete = null,
+            lookUp = viewModel::lookUpCompany,
         )
     }
     editingLine?.let { index ->

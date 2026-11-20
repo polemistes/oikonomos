@@ -1,5 +1,6 @@
 package app.oikonomos.data
 
+import androidx.room.ColumnInfo
 import androidx.room.Embedded
 import androidx.room.Entity
 import androidx.room.ForeignKey
@@ -90,6 +91,14 @@ data class Voucher(
     val tripId: Long? = null,
     /** Prosjektet bilaget hører til, om noe. */
     val projectId: Long? = null,
+    /** Motpartens organisasjonsnummer, ni sifre, eller tomt. */
+    @ColumnInfo(defaultValue = "") val counterpartyOrgNumber: String = "",
+    /** Valutaen dokumentet er i, som ISO-kode. Tom for norske kroner. */
+    @ColumnInfo(defaultValue = "") val currency: String = "",
+    /** Beløpet i [currency], i hundredeler. [amountOre] er alltid i kroner, og er 0 til kursen er kjent. */
+    @ColumnInfo(defaultValue = "0") val foreignAmount: Long = 0,
+    /** Hvor kursen bak kronebeløpet kom fra, som «Norges Bank 13.11.2026». Tom når kronebeløpet er skrevet inn for hånd. */
+    @ColumnInfo(defaultValue = "") val exchangeRateSource: String = "",
 ) {
     /** «2026-0007», tomt for en uavklart kvittering. */
     val label: String get() = number?.let { voucherLabel(year, it) }.orEmpty()

@@ -333,6 +333,12 @@ private fun TripVoucherRow(
             }
             if (voucher.amountOre != 0L) {
                 Text(Money.format(voucher.amountOre), fontWeight = FontWeight.Medium, modifier = Modifier.padding(end = 8.dp))
+            } else if (voucher.currency.isNotEmpty() && voucher.foreignAmount != 0L) {
+                Text(
+                    "${Money.format(voucher.foreignAmount)} ${voucher.currency}",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(end = 8.dp),
+                )
             }
         }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically, content = actions)

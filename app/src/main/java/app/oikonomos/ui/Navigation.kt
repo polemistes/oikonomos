@@ -172,7 +172,7 @@ fun OikonomosNavHost(container: AppContainer) {
         }
         composable<CustomersRoute> { entry ->
             CustomersScreen(
-                viewModel = viewModel(factory = viewModelFactory { initializer { CustomersViewModel(container.invoices) } }),
+                viewModel = viewModel(factory = viewModelFactory { initializer { CustomersViewModel(container.invoices, container.online) } }),
                 onBack = { navController.popFrom(entry) },
             )
         }

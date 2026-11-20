@@ -337,6 +337,10 @@ class YearExporter(
                 project = item.project?.name.orEmpty(),
                 cancelled = item.voucher.isCancelled,
                 cancelReason = item.voucher.cancelReason,
+                orgNumber = item.voucher.counterpartyOrgNumber,
+                currency = item.voucher.currency,
+                foreignAmount = item.voucher.foreignAmount,
+                exchangeRateSource = item.voucher.exchangeRateSource,
             )
         }
         val vatRegistered = settings.settings.first().vatRegistered

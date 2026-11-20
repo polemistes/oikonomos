@@ -37,6 +37,12 @@ interface VoucherDao {
     @Query("SELECT COALESCE(MAX(number), 0) + 1 FROM voucher WHERE year = :year")
     suspend fun nextNumber(year: Int): Int
 
+    @Query("SELECT MAX(number) FROM voucher WHERE year = :year")
+    suspend fun lastNumber(year: Int): Int?
+
+    @Query("UPDATE voucher SET number = NULL WHERE id = :id")
+    suspend fun clearNumber(id: Long)
+
     @Insert
     suspend fun insert(voucher: Voucher): Long
 
@@ -98,6 +104,10 @@ interface VoucherDao {
 
     @Query("SELECT * FROM voucher WHERE tripId IS NOT NULL")
     suspend fun allOnTrips(): List<Voucher>
+
+    /** Valutaene som er brukt på bilag, den sist brukte først. */
+    @Query("SELECT currency FROM voucher WHERE currency != '' GROUP BY currency ORDER BY MAX(id) DESC LIMIT :limit")
+    suspend fun recentCurrencies(limit: Int): List<String>
 }
 
 @Dao
@@ -290,8 +300,8 @@ class Converters {
         Category::class, Voucher::class, Attachment::class, Customer::class, Invoice::class, InvoiceLine::class, Trip::class,
         Project::class,
     ],
-    version = 3,
-    autoMigrations = [AutoMigration(from = 1, to = 2), AutoMigration(from = 2, to = 3)],
+    version = 4,
+    autoMigrations = [AutoMigration(from = 1, to = 2), AutoMigration(from = 2, to = 3), AutoMigration(from = 3, to = 4)],
 )
 @TypeConverters(Converters::class)
 abstract class AppDatabase : RoomDatabase() {

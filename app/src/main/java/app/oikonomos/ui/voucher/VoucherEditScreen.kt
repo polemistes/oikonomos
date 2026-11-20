@@ -15,10 +15,12 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
@@ -29,10 +31,13 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
@@ -52,6 +57,7 @@ import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SuggestionChip
+import androidx.compose.material3.Surface
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -81,11 +87,15 @@ import app.oikonomos.data.AttachmentStore
 import app.oikonomos.data.Category
 import app.oikonomos.data.StoredFile
 import app.oikonomos.data.VoucherType
+import app.oikonomos.domain.ExchangeRates
 import app.oikonomos.domain.Money
+import app.oikonomos.domain.OrgNumber
 import app.oikonomos.ocr.DocumentScanner
 import app.oikonomos.ui.AttachmentThumbnail
+import app.oikonomos.ui.CurrencyPickerDialog
 import app.oikonomos.ui.DateField
 import app.oikonomos.ui.DropdownField
+import app.oikonomos.ui.LanguagePickerDialog
 import app.oikonomos.ui.formatted
 import com.google.android.gms.common.moduleinstall.ModuleInstall
 import com.google.mlkit.vision.documentscanner.GmsDocumentScanningResult
@@ -114,6 +124,9 @@ fun VoucherEditScreen(
     var confirmDiscard by rememberSaveable { mutableStateOf(false) }
     var confirmDelete by rememberSaveable { mutableStateOf(false) }
     var confirmCancel by rememberSaveable { mutableStateOf(false) }
+    var confirmUnbook by rememberSaveable { mutableStateOf(false) }
+    var pickCurrency by rememberSaveable { mutableStateOf(false) }
+    var pickLanguage by rememberSaveable { mutableStateOf(false) }
     val permissions = state.permissions
     val scope = rememberCoroutineScope()
     val showMessage: (String) -> Unit = { message -> scope.launch { snackbar.showSnackbar(message) } }
@@ -190,20 +203,75 @@ fun VoucherEditScreen(
                             Icon(Icons.Filled.Delete, contentDescription = stringResource(R.string.delete))
                         }
                     }
-                    if (permissions.cancel) {
-                        TextButton(onClick = { confirmCancel = true }) { Text(stringResource(R.string.cancel_voucher)) }
+                    if (permissions.cancel || permissions.unbook) {
+                        var menuOpen by remember { mutableStateOf(false) }
+                        Box {
+                            IconButton(onClick = { menuOpen = true }) {
+                                Icon(Icons.Filled.MoreVert, contentDescription = stringResource(R.string.more_actions))
+                            }
+                            DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                                if (permissions.unbook) {
+                                    DropdownMenuItem(
+                                        text = { Text(stringResource(R.string.unbook)) },
+                                        onClick = {
+                                            menuOpen = false
+                                            confirmUnbook = true
+                                        },
+                                    )
+                                }
+                                if (permissions.cancel) {
+                                    DropdownMenuItem(
+                                        text = { Text(stringResource(R.string.cancel_voucher)) },
+                                        onClick = {
+                                            menuOpen = false
+                                            confirmCancel = true
+                                        },
+                                    )
+                                }
+                            }
+                        }
                     }
                 },
             )
         },
         snackbarHost = { SnackbarHost(snackbar) },
+        // Knappene ligger fast nederst, også over tastaturet, så begge valgene alltid er synlige.
+        bottomBar = {
+            if (!state.loading && permissions.anyEdit) {
+                val idle = !state.saving && !state.reading
+                Surface {
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .navigationBarsPadding()
+                            .imePadding()
+                            .padding(horizontal = 16.dp, vertical = 8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        if (state.pending && permissions.book) {
+                            // Å legge kvitteringen til side er det trygge valget og står derfor framhevet.
+                            // Føring gir bilagsnummer og skal være et bevisst valg.
+                            Button(onClick = { viewModel.save(book = false) }, enabled = idle, modifier = Modifier.weight(1f)) {
+                                Text(stringResource(R.string.action_save_pending), textAlign = TextAlign.Center)
+                            }
+                            OutlinedButton(onClick = { viewModel.save(book = true) }, enabled = idle, modifier = Modifier.weight(1f)) {
+                                Text(stringResource(R.string.action_book), textAlign = TextAlign.Center)
+                            }
+                        } else {
+                            Button(onClick = { viewModel.save(book = true) }, enabled = idle, modifier = Modifier.weight(1f)) {
+                                Text(stringResource(R.string.save))
+                            }
+                        }
+                    }
+                }
+            }
+        },
     ) { padding ->
         if (state.loading) return@Scaffold
         Column(
             Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .imePadding()
                 .verticalScroll(rememberScrollState())
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
@@ -238,6 +306,12 @@ fun VoucherEditScreen(
                     LinearProgressIndicator(Modifier.fillMaxWidth())
                     Text(stringResource(R.string.reading_receipt), style = MaterialTheme.typography.bodySmall)
                 }
+            } else if (permissions.editAll && state.attachments.isNotEmpty()) {
+                // Viser hvilket språk forslagene er lest med, og lar brukeren lese kvitteringen på nytt som et annet.
+                AssistChip(
+                    onClick = { pickLanguage = true },
+                    label = { Text(stringResource(R.string.read_as, stringResource(state.language.label))) },
+                )
             }
 
             SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
@@ -255,14 +329,26 @@ fun VoucherEditScreen(
                 ) { Text(stringResource(R.string.type_income)) }
             }
 
+            // På en kvittering i fremmed valuta er det øverste beløpet det som står på kvitteringen, og
+            // kronebeløpet får sitt eget felt under.
+            val foreign = state.currency.isNotEmpty()
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 OutlinedTextField(
-                    value = state.amount,
-                    onValueChange = viewModel::setAmount,
+                    value = if (foreign) state.foreignAmount else state.amount,
+                    onValueChange = if (foreign) viewModel::setForeignAmount else viewModel::setAmount,
                     enabled = permissions.editAll,
                     label = { Text(stringResource(R.string.field_amount)) },
-                    suffix = { Text("kr") },
-                    isError = state.amountError,
+                    trailingIcon = {
+                        TextButton(
+                            onClick = { pickCurrency = true },
+                            enabled = permissions.editAll,
+                            contentPadding = PaddingValues(start = 8.dp, end = 4.dp),
+                        ) {
+                            Text(if (foreign) state.currency else stringResource(R.string.currency_nok_short))
+                            Icon(Icons.Filled.ArrowDropDown, contentDescription = stringResource(R.string.currency_pick))
+                        }
+                    },
+                    isError = if (foreign) state.foreignAmountError else state.amountError,
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                     modifier = Modifier.weight(1f),
@@ -278,6 +364,55 @@ fun VoucherEditScreen(
                     )
                 } else {
                     DateField(stringResource(R.string.field_date), state.date, viewModel::setDate, Modifier.weight(1f))
+                }
+            }
+            if (foreign && state.foreignAmountError) {
+                Text(
+                    stringResource(R.string.foreign_amount_error),
+                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+            if (foreign) {
+                val amountOre = Money.parse(state.amount)
+                val foreignAmount = Money.parse(state.foreignAmount)
+                // Kursen kronebeløpet svarer til, slik at et beløp som er skrevet inn for hånd også kan kontrolleres.
+                val effective = if (amountOre != null && foreignAmount != null) {
+                    ExchangeRates.effectiveRate(amountOre, foreignAmount)?.let { ExchangeRates.describe(state.currency, it) }
+                } else {
+                    null
+                }
+                val rateText = when {
+                    state.rateLoading -> stringResource(R.string.rate_loading)
+                    state.rateSource.isNotEmpty() && (state.fetchedRate ?: effective) != null ->
+                        stringResource(R.string.rate_with_source, state.fetchedRate ?: effective.orEmpty(), state.rateSource)
+                    state.rateFailed && state.lookupsOff -> stringResource(R.string.rate_offline_setting)
+                    state.rateFailed -> stringResource(R.string.rate_failed)
+                    effective != null -> stringResource(R.string.rate_manual, effective)
+                    else -> null
+                }
+                OutlinedTextField(
+                    value = state.amount,
+                    onValueChange = viewModel::setAmount,
+                    enabled = permissions.editAll,
+                    label = { Text(stringResource(R.string.field_amount_nok)) },
+                    suffix = { Text(stringResource(R.string.currency_nok_short)) },
+                    supportingText = rateText?.let { text -> { Text(text) } },
+                    isError = state.amountError,
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                if (permissions.editAll) {
+                    Text(
+                        stringResource(R.string.rate_hint),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    // Kursen hentes av seg selv. Knappen er for å prøve igjen, eller gå tilbake til kursen etter å ha skrevet et beløp.
+                    if (!state.rateLoading && state.rateSource.isEmpty() && foreignAmount != null && !state.lookupsOff) {
+                        TextButton(onClick = viewModel::fetchRate) { Text(stringResource(R.string.rate_fetch)) }
+                    }
                 }
             }
             if (state.amountError) {
@@ -300,8 +435,10 @@ fun VoucherEditScreen(
                 modifier = Modifier.fillMaxWidth(),
             )
 
-            // Linjene fra toppen av kvitteringen, så riktig firmanavn kan velges med ett trykk.
-            val candidates = state.vendorCandidates.filter { it != state.counterparty.trim() }
+            // Navnet fra Enhetsregisteret først, så linjene fra toppen av kvitteringen, så riktig firmanavn
+            // kan velges med ett trykk.
+            val candidates = (listOfNotNull(state.registeredName) + state.vendorCandidates).distinct()
+                .filter { it != state.counterparty.trim() }
             if (permissions.editAll && candidates.isNotEmpty()) {
                 Row(
                     Modifier.horizontalScroll(rememberScrollState()),
@@ -311,6 +448,28 @@ fun VoucherEditScreen(
                         SuggestionChip(onClick = { viewModel.setCounterparty(candidate) }, label = { Text(candidate) })
                     }
                 }
+            }
+
+            // Utenlandske foretak har ikke norsk organisasjonsnummer, så feltet skjules på bilag i fremmed valuta.
+            if (!foreign || state.orgNumber.isNotEmpty()) {
+                val registeredName = state.registeredName
+                val orgNumberNote = when {
+                    registeredName != null -> stringResource(R.string.org_number_registered, registeredName)
+                    state.orgNumberUnknown -> stringResource(R.string.org_number_unknown)
+                    state.orgNumber.length == 9 && !OrgNumber.isValid(state.orgNumber) -> stringResource(R.string.org_number_invalid)
+                    else -> null
+                }
+                OutlinedTextField(
+                    value = state.orgNumber,
+                    onValueChange = viewModel::setOrgNumber,
+                    enabled = permissions.editAll,
+                    label = { Text(stringResource(R.string.field_org_number)) },
+                    supportingText = orgNumberNote?.let { text -> { Text(text) } },
+                    isError = registeredName == null && orgNumberNote != null,
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    modifier = Modifier.fillMaxWidth(),
+                )
             }
 
             CategoryField(categories, state.type, state.categoryId, permissions.editCategory, viewModel::setCategory)
@@ -341,7 +500,7 @@ fun VoucherEditScreen(
                 )
             }
 
-            if (vatRegistered && permissions.editAll) {
+            if (vatRegistered && permissions.editAll && !foreign) {
                 DropdownField(
                     label = stringResource(R.string.field_vat_rate),
                     selectedText = vatRateText(state.vatRate),
@@ -367,26 +526,46 @@ fun VoucherEditScreen(
                 minLines = 2,
                 modifier = Modifier.fillMaxWidth(),
             )
-
-            val idle = !state.saving && !state.reading
-            when {
-                !permissions.anyEdit -> Unit
-                // En uavklart kvittering kan enten føres i regnskapet nå eller bli liggende til senere.
-                state.pending && permissions.book -> {
-                    Button(onClick = { viewModel.save(book = true) }, enabled = idle, modifier = Modifier.fillMaxWidth()) {
-                        Text(stringResource(R.string.action_book))
-                    }
-                    OutlinedButton(onClick = { viewModel.save(book = false) }, enabled = idle, modifier = Modifier.fillMaxWidth()) {
-                        Text(stringResource(R.string.action_save_pending))
-                    }
-                }
-                else -> Button(onClick = { viewModel.save(book = true) }, enabled = idle, modifier = Modifier.fillMaxWidth()) {
-                    Text(stringResource(R.string.save))
-                }
-            }
         }
     }
 
+    if (pickCurrency) {
+        CurrencyPickerDialog(
+            recent = state.recentCurrencies,
+            onPick = { code ->
+                pickCurrency = false
+                viewModel.setCurrency(code)
+            },
+            onDismiss = { pickCurrency = false },
+        )
+    }
+    if (pickLanguage) {
+        LanguagePickerDialog(
+            models = viewModel.languageModels,
+            selected = state.language,
+            onSelect = { language ->
+                pickLanguage = false
+                viewModel.setLanguage(language)
+            },
+            onDismiss = { pickLanguage = false },
+        )
+    }
+    if (confirmUnbook) {
+        AlertDialog(
+            onDismissRequest = { confirmUnbook = false },
+            title = { Text(stringResource(R.string.unbook_title)) },
+            text = { Text(stringResource(R.string.unbook_body)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirmUnbook = false
+                    viewModel.unbook()
+                }) { Text(stringResource(R.string.unbook)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmUnbook = false }) { Text(stringResource(R.string.cancel)) }
+            },
+        )
+    }
     if (confirmCancel) {
         var reason by rememberSaveable { mutableStateOf("") }
         AlertDialog(

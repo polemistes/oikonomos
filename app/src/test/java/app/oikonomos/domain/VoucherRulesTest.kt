@@ -37,6 +37,17 @@ class VoucherRulesTest {
     }
 
     @Test
+    fun onlyTheLastVoucherOfTheYearCanBeUnbooked() {
+        assertTrue(VoucherRules.permissions(booked, lastNumberInYear = 7).unbook)
+        // Et tidligere bilag ville etterlatt et hull i nummerrekken.
+        assertFalse(VoucherRules.permissions(booked, lastNumberInYear = 8).unbook)
+        assertFalse(VoucherRules.permissions(booked).unbook)
+        assertFalse(VoucherRules.permissions(pending, lastNumberInYear = 7).unbook)
+        assertFalse(VoucherRules.permissions(booked.copy(invoiceId = 3), lastNumberInYear = 7).unbook)
+        assertFalse(VoucherRules.permissions(booked.copy(cancelledAt = 1000), lastNumberInYear = 7).unbook)
+    }
+
+    @Test
     fun voucherFromInvoiceOnlyAllowsCategoryAndDescription() {
         val permissions = VoucherRules.permissions(booked.copy(invoiceId = 3))
         assertFalse(permissions.editAll)

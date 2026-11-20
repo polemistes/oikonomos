@@ -1,6 +1,8 @@
 package app.oikonomos.domain
 
 import app.oikonomos.data.VoucherType
+import java.math.BigDecimal
+import java.math.RoundingMode
 import java.time.LocalDate
 
 data class ExportRow(
@@ -21,6 +23,12 @@ data class ExportRow(
     /** Tom for vanlige bilag. For annullerte bilag: «Annullert» og årsaken. */
     val cancelled: Boolean = false,
     val cancelReason: String = "",
+    val orgNumber: String = "",
+    /** ISO-kode for bilag i fremmed valuta, tom for kroner. [foreignAmount] er da beløpet i valutaen, i hundredeler. */
+    val currency: String = "",
+    val foreignAmount: Long = 0,
+    /** Hvor kursen bak kronebeløpet kom fra, tom når kronebeløpet er skrevet inn for hånd. */
+    val exchangeRateSource: String = "",
 ) {
     val netOre: Long get() = amountOre - vatOre
 }
@@ -55,9 +63,12 @@ object CsvExport {
     private const val NEWLINE = "\r\n"
 
     fun vouchers(rows: List<ExportRow>, vatRegistered: Boolean): String {
+        val foreign = rows.any { it.currency.isNotEmpty() }
         val header = buildList {
-            addAll(listOf("Bilagsnr", "Dato", "Type", "Motpart", "Beskrivelse", "Kategori", "Konto", "Beløp"))
+            addAll(listOf("Bilagsnr", "Dato", "Type", "Motpart", "Org.nr", "Beskrivelse", "Kategori", "Konto", "Beløp"))
             if (vatRegistered) addAll(listOf("MVA-sats", "MVA"))
+            // Kolonnene for valuta er bare med når året har bilag i fremmed valuta.
+            if (foreign) addAll(listOf("Valuta", "Beløp i valuta", "Kurs", "Kurskilde"))
             add("Prosjekt")
             add("Reise")
             add("Vedlegg")
@@ -69,6 +80,7 @@ object CsvExport {
                 add(row.date.toString())
                 add(typeName(row.type))
                 add(text(row.counterparty))
+                add(row.orgNumber)
                 add(text(row.description))
                 add(text(row.category))
                 add(text(row.account))
@@ -76,6 +88,14 @@ object CsvExport {
                 if (vatRegistered) {
                     add(row.vatRate.toString())
                     add(Money.formatPlain(row.vatOre))
+                }
+                if (foreign) {
+                    val inCurrency = row.currency.isNotEmpty()
+                    add(row.currency)
+                    add(if (inCurrency) Money.formatPlain(row.foreignAmount) else "")
+                    // Kroner per enhet av valutaen, slik kronebeløpet på bilaget faktisk ble.
+                    add(ExchangeRates.effectiveRate(row.amountOre, row.foreignAmount)?.takeIf { inCurrency }?.let(::rate).orEmpty())
+                    add(if (inCurrency) text(row.exchangeRateSource.ifEmpty { "Skrevet inn" }) else "")
                 }
                 add(text(row.project))
                 add(text(row.trip))
@@ -138,6 +158,8 @@ object CsvExport {
         }
         return toCsv(listOf(header) + lines)
     }
+
+    private fun rate(value: BigDecimal): String = value.setScale(6, RoundingMode.HALF_UP).toPlainString().replace('.', ',')
 
     private fun typeName(type: VoucherType) = if (type == VoucherType.INCOME) "Inntekt" else "Utgift"
 

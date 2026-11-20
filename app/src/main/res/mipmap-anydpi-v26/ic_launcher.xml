@@ -1,6 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Forgrunnen er et fotografi, så ikonet har ikke noe ensfarget lag for tematiserte ikoner.
+     Fotografiet er «Metapontum Triobol 868740» av Classical Numismatic Group, Inc. (http://www.cngcoins.com),
+     hentet fra Wikimedia Commons og lisensiert under CC BY-SA 2.5. Ikonet har samme lisens, ikke GPL. -->
 <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
     <background android:drawable="@color/launcher_background" />
-    <foreground android:drawable="@drawable/ic_launcher_foreground" />
-    <monochrome android:drawable="@drawable/ic_launcher_foreground" />
+    <foreground android:drawable="@mipmap/ic_launcher_foreground" />
 </adaptive-icon>

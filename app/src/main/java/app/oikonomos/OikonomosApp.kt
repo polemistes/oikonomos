@@ -8,10 +8,12 @@ import app.oikonomos.data.AttachmentStore
 import app.oikonomos.data.AutoBackup
 import app.oikonomos.data.BackupManager
 import app.oikonomos.data.InvoiceRepository
+import app.oikonomos.data.OnlineLookups
 import app.oikonomos.data.ReceiptImporter
 import app.oikonomos.data.SettingsStore
 import app.oikonomos.data.VoucherRepository
 import app.oikonomos.data.YearExporter
+import app.oikonomos.ocr.LanguageModels
 import app.oikonomos.ocr.TextReader
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -36,10 +38,12 @@ class AppContainer(context: Context) {
     val settings = SettingsStore(context)
     val attachments = AttachmentStore(context)
     val repository = VoucherRepository(database, attachments)
-    val textReader = TextReader(context)
+    val languageModels = LanguageModels(context)
+    val textReader = TextReader(context, settings, languageModels)
+    val online = OnlineLookups(settings)
     val backup = BackupManager(context, database, attachments, settings)
     val autoBackup = AutoBackup(backup, settings)
-    val importer = ReceiptImporter(attachments, textReader, repository)
+    val importer = ReceiptImporter(attachments, textReader, repository, settings, online)
     val invoices = InvoiceRepository(database, attachments, settings)
     val exporter = YearExporter(context, repository, database, database.invoiceDao(), attachments, settings)
 

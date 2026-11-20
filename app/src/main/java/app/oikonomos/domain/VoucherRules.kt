@@ -14,6 +14,8 @@ data class VoucherPermissions(
     val cancel: Boolean,
     /** Kvitteringen kan føres i regnskapet og få bilagsnummer. */
     val book: Boolean,
+    /** Føringen kan angres, slik at bilaget blir en uavklart kvittering igjen. */
+    val unbook: Boolean = false,
 ) {
     val anyEdit: Boolean get() = editAll || editCategory || editDescription
 
@@ -32,11 +34,21 @@ data class VoucherPermissions(
  * Etterpå kan den rettes, men ikke slettes, slik at nummerrekken aldri får hull.
  */
 object VoucherRules {
-    fun permissions(voucher: Voucher): VoucherPermissions = when {
+    /**
+     * [lastNumberInYear] er det høyeste bilagsnummeret i bilagets år. Bare det siste bilaget kan få
+     * føringen angret, for da blir nummeret ledig for neste bilag og rekken får ikke hull.
+     */
+    fun permissions(voucher: Voucher, lastNumberInYear: Int? = null): VoucherPermissions = when {
         voucher.isCancelled -> VoucherPermissions.NONE
         voucher.isPending -> VoucherPermissions.NEW.copy(delete = true)
         // Beløp, dato og vedlegg på et bilag fra en faktura følger fakturaen, som rettes med kreditnota.
         voucher.invoiceId != null -> VoucherPermissions.NONE.copy(editCategory = true, editDescription = true)
-        else -> VoucherPermissions.NONE.copy(editAll = true, editCategory = true, editDescription = true, cancel = true)
+        else -> VoucherPermissions.NONE.copy(
+            editAll = true,
+            editCategory = true,
+            editDescription = true,
+            cancel = true,
+            unbook = voucher.number == lastNumberInYear,
+        )
     }
 }

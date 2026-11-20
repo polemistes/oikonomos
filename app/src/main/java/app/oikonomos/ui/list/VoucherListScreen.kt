@@ -363,6 +363,9 @@ private fun VoucherRow(item: VoucherWithDetails, store: AttachmentStore, onClick
                         else -> MaterialTheme.colorScheme.onSurface
                     },
                 )
+            } else if (voucher.currency.isNotEmpty() && voucher.foreignAmount != 0L) {
+                // Kronebeløpet mangler til kursen er hentet. Imens vises beløpet slik det står på kvitteringen.
+                Text("${Money.format(voucher.foreignAmount)} ${voucher.currency}", style = MaterialTheme.typography.bodyLarge, color = muted)
             }
         },
     )

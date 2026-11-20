@@ -34,6 +34,12 @@ data class AppSettings(
     val limitedCompany: Boolean = false,
     /** Sant når spørsmålene ved første oppstart er besvart. */
     val setupDone: Boolean = false,
+    /** Prøveordning: les kvitteringer med Tesseract, som er fri programvare, i stedet for Googles tekstgjenkjenning. */
+    val useTesseract: Boolean = false,
+    /** Slår opp firmanavn i Enhetsregisteret og henter valutakurser. Av betyr at appen aldri går på nettet av seg selv. */
+    val onlineLookups: Boolean = true,
+    /** Språket kvitteringene leses som, en id fra ReceiptLanguage. Tom for norsk og engelsk. */
+    val receiptLanguage: String = "",
 )
 
 /**
@@ -78,6 +84,9 @@ class SettingsStore(private val context: Context) {
     private val invoiceNote = stringPreferencesKey("invoice_note")
     private val limitedCompany = booleanPreferencesKey("limited_company")
     private val setupDone = booleanPreferencesKey("setup_done")
+    private val useTesseract = booleanPreferencesKey("use_tesseract")
+    private val onlineLookups = booleanPreferencesKey("online_lookups")
+    private val receiptLanguage = stringPreferencesKey("receipt_language")
 
     val settings: Flow<AppSettings> = context.dataStore.data.map { it.toSettings() }
 
@@ -114,6 +123,9 @@ class SettingsStore(private val context: Context) {
             prefs[invoiceNote] = updated.invoiceNote
             prefs[limitedCompany] = updated.limitedCompany
             prefs[setupDone] = updated.setupDone
+            prefs[useTesseract] = updated.useTesseract
+            prefs[onlineLookups] = updated.onlineLookups
+            prefs[receiptLanguage] = updated.receiptLanguage
         }
     }
 
@@ -143,6 +155,9 @@ class SettingsStore(private val context: Context) {
             invoiceNote = this[invoiceNote].orEmpty(),
             limitedCompany = this[limitedCompany] ?: false,
             setupDone = this[setupDone] ?: false,
+            useTesseract = this[useTesseract] ?: false,
+            onlineLookups = this[onlineLookups] ?: defaults.onlineLookups,
+            receiptLanguage = this[receiptLanguage].orEmpty(),
         )
     }
 }
